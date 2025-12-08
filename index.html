@@ -3,144 +3,180 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WAV → MakeCode Converter</title>
+<title>MakeCode Arcade WAV Converter</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.3/full/pyodide.js"></script>
 <style>
     body {
-        font-family: Arial, sans-serif;
-        text-align: center;
-        background: #181818;
-        color: #eee;
-        margin: 0;
-        padding: 40px;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: #1e1e2f;
+        color: #e0e0e0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 2rem;
     }
-    h1 { color: #00ffcc; }
-    #dropzone {
-        border: 2px dashed #00ffcc;
-        border-radius: 10px;
-        padding: 40px;
-        margin: 20px auto;
-        width: 80%;
+    h1 {
+        color: #ff6f61;
+    }
+    .drop-area {
+        border: 2px dashed #ff6f61;
+        padding: 2rem;
+        margin: 1rem;
+        border-radius: 12px;
+        width: 100%;
         max-width: 600px;
-        transition: 0.3s;
+        text-align: center;
+        transition: background 0.3s;
+        cursor: pointer;
     }
-    #dropzone.dragover {
-        background-color: #002b29;
-        border-color: #00ffaa;
+    .drop-area.dragover {
+        background: #ff6f61;
+        color: #1e1e2f;
     }
-    pre {
-        background: #111;
-        color: #0f0;
-        padding: 15px;
-        border-radius: 8px;
-        text-align: left;
-        overflow-x: auto;
+    #output {
+        width: 100%;
+        max-width: 600px;
+        margin-top: 1rem;
+        padding: 1rem;
+        background: #2a2a3d;
+        border-radius: 12px;
         white-space: pre-wrap;
-        word-wrap: break-word;
+        overflow-x: auto;
     }
-    #instructions {
-        margin-top: 20px;
-        background: #202020;
-        border-radius: 8px;
-        padding: 10px;
+    button {
+        margin-top: 1rem;
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 6px;
+        background: #ff6f61;
+        color: #1e1e2f;
+        font-weight: bold;
+        cursor: pointer;
     }
 </style>
 </head>
 <body>
-    <h1>🎵 WAV → MakeCode Converter</h1>
-    <div id="dropzone">Drag and drop a WAV file here</div>
-
-    <div id="instructions">
-        <!-- INSTRUCTIONS HERE -->
-    </div>
-
-    <h2>Generated MakeCode Output:</h2>
-    <pre id="output"></pre>
+<h1>MakeCode Arcade WAV Converter</h1>
+<div class="drop-area" id="drop-area">
+    Drag & Drop WAV File Here<br>or Click to Select
+</div>
+<input type="file" id="file-input" accept=".wav" style="display:none;">
+<pre id="output">Output will appear here...</pre>
 
 <script>
-function readWavFile(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = e => resolve(e.target.result);
-        reader.onerror = reject;
-        reader.readAsArrayBuffer(file);
-    });
-}
+let pyodideReadyPromise = loadPyodide({indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.3/full/"});
 
-function wavToMakeCode(buffer) {
-    const view = new DataView(buffer);
-    const numChannels = view.getUint16(22, true);
-    const sampleRate = view.getUint32(24, true);
-    const bitsPerSample = view.getUint16(34, true);
+const dropArea = document.getElementById('drop-area');
+const fileInput = document.getElementById('file-input');
+const output = document.getElementById('output');
 
-    let offset = 44;
-    let samples = [];
-    for (; offset < view.byteLength; offset += 2) {
-        const sample = view.getInt16(offset, true);
-        samples.push(sample / 32768);
-    }
+dropArea.addEventListener('click', () => fileInput.click());
 
-    const step = Math.max(1, Math.floor(samples.length / 300));
-    const filtered = samples.filter((_, i) => i % step === 0);
-    const buf = [];
+fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
 
-    for (let i = 0; i < filtered.length; i++) {
-        const amp = Math.abs(filtered[i]);
-        let freq = 200 + amp * 1800;
-
-        // --- Frequency scaling fix (better pitch) ---
-        let scaledFreq = Math.sqrt(freq) * 16;
-        if (scaledFreq < 80) scaledFreq = 80;
-        if (scaledFreq > 4000) scaledFreq = 4000;
-
-        const hex = scaledFreq.toString(16).padStart(4, "0");
-        buf.push(hex);
-    }
-
-    return `
-namespace music {
-    //% shim=music::queuePlayInstructions
-    export function queuePlayInstructions(timeDelta: number, buf: Buffer) { }
-}
-
-const soundInstructions = [
-    hex\`${buf.join("")}\`
-];
-for (const instructions of soundInstructions) {
-    music.playInstructions(100, instructions);
-}`;
-}
-
-const dropzone = document.getElementById("dropzone");
-const output = document.getElementById("output");
-
-dropzone.addEventListener("dragover", e => {
+dropArea.addEventListener('dragover', e => {
     e.preventDefault();
-    dropzone.classList.add("dragover");
+    dropArea.classList.add('dragover');
+});
+dropArea.addEventListener('dragleave', e => {
+    dropArea.classList.remove('dragover');
+});
+dropArea.addEventListener('drop', e => {
+    e.preventDefault();
+    dropArea.classList.remove('dragover');
+    handleFile(e.dataTransfer.files[0]);
 });
 
-dropzone.addEventListener("dragleave", () => {
-    dropzone.classList.remove("dragover");
-});
-
-dropzone.addEventListener("drop", async e => {
-    e.preventDefault();
-    dropzone.classList.remove("dragover");
-    const file = e.dataTransfer.files[0];
-    if (!file || !file.name.endsWith(".wav")) {
-        output.textContent = "Please drop a valid .wav file.";
+async function handleFile(file) {
+    if (!file.name.endsWith('.wav')) {
+        output.textContent = "Please provide a WAV file.";
         return;
     }
-    output.textContent = "Processing...";
+    output.textContent = "Loading Python runtime...";
+    const pyodide = await pyodideReadyPromise;
 
+    const arrayBuffer = await file.arrayBuffer();
+    const wavBytes = new Uint8Array(arrayBuffer);
+
+    // Python code: audio conversion script
+    const pyCode = `
+import struct
+import numpy as np
+import scipy
+from js import wavBytes
+
+def constrain(value, min_value, max_value):
+    return min(max(value, min_value), max_value)
+
+def create_sound_instruction(start_freq, end_freq, start_vol, end_vol, duration):
+    return struct.pack("<BBHHHHH",
+                       3, 0,
+                       max(start_freq, 1),
+                       duration,
+                       constrain(start_vol, 0, 1024),
+                       constrain(end_vol, 0, 1024),
+                       max(end_freq, 1)
+                       ).hex()
+
+def audio_to_makecode_arcade(wav_bytes, period=25, gain=2.5):
+    from io import BytesIO
+    sample_rate, data = scipy.io.wavfile.read(BytesIO(wav_bytes.to_py()))
+
+    if len(data.shape) > 1 and data.shape[1] > 1:
+        data = data[:, 0]
+
+    f, t, Sxx = scipy.signal.spectrogram(data, sample_rate, nperseg=round(period/1000 * sample_rate))
+    frequency_buckets = [50, 159, 200, 252, 317, 400, 504, 635, 800, 1008,
+                         1270, 1600, 2016, 2504, 3200, 4032, 5080, 7000, 9000, 10240]
+
+    max_freqs = 30
+    loudest_indices = np.argsort(Sxx, axis=0)[-max_freqs:]
+    loudest_frequencies = f[loudest_indices].transpose()
+    loudest_amplitudes = Sxx[loudest_indices, np.arange(Sxx.shape[1])].transpose()
+    sound_instruction_buffers = [""] * len(frequency_buckets)
+    max_amp = np.max(loudest_amplitudes)
+
+    for slice_index in range(len(loudest_frequencies)):
+        for bucket_index in range(len(frequency_buckets)):
+            freqs = loudest_frequencies[slice_index]
+            low = frequency_buckets[bucket_index-1] if bucket_index>0 else 0
+            high = frequency_buckets[bucket_index]
+            freq_index = -1
+            for i in range(len(freqs)-1,-1,-1):
+                if low <= freqs[i] <= high:
+                    freq_index = i
+                    break
+            if freq_index != -1:
+                freq = round(freqs[freq_index])
+                amp = round(min(1024, (loudest_amplitudes[slice_index,freq_index]/max_amp*1024)*gain))
+                sound_instruction_buffers[bucket_index] += create_sound_instruction(freq,freq,amp,amp,period)
+            else:
+                sound_instruction_buffers[bucket_index] += create_sound_instruction(0,0,0,0,period)
+
+    sound_instruction_buffers = [f"hex`{buf}`" for buf in sound_instruction_buffers]
+
+    code = (
+        "namespace music:\\n"
+        "    //% shim=music::queuePlayInstructions\\n"
+        "    export function queuePlayInstructions(timeDelta: number, buf: Buffer) { }\\n\\n"
+        "const soundInstructions = [\\n"
+        "    " + ",\\n    ".join(sound_instruction_buffers) + "\\n];\\n\\n"
+        "for (const instructions of soundInstructions) {\\n"
+        "    music.queuePlayInstructions(100, instructions);\\n}"
+    )
+    return code
+
+audio_to_makecode_arcade(wavBytes)
+`;
+
+    output.textContent = "Converting...";
     try {
-        const data = await readWavFile(file);
-        const code = wavToMakeCode(data);
-        output.textContent = code;
+        const result = await pyodide.runPythonAsync(pyCode);
+        output.textContent = result;
     } catch (err) {
-        console.error(err);
-        output.textContent = "Error reading WAV file.";
+        output.textContent = "Error: " + err;
     }
-});
+}
 </script>
 </body>
 </html>
