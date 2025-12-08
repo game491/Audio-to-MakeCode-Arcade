@@ -20,14 +20,14 @@
     }
     .drop-area {
         border: 2px dashed #ff6f61;
-        padding: 2rem;
+        padding: 3rem;
         margin: 1rem;
         border-radius: 12px;
         width: 100%;
         max-width: 600px;
         text-align: center;
-        transition: background 0.3s;
-        cursor: pointer;
+        transition: background 0.3s, color 0.3s;
+        font-size: 1.2rem;
     }
     .drop-area.dragover {
         background: #ff6f61;
@@ -42,37 +42,22 @@
         border-radius: 12px;
         white-space: pre-wrap;
         overflow-x: auto;
-    }
-    button {
-        margin-top: 1rem;
-        padding: 0.5rem 1rem;
-        border: none;
-        border-radius: 6px;
-        background: #ff6f61;
-        color: #1e1e2f;
-        font-weight: bold;
-        cursor: pointer;
+        min-height: 200px;
     }
 </style>
 </head>
 <body>
 <h1>MakeCode Arcade WAV Converter</h1>
 <div class="drop-area" id="drop-area">
-    Drag & Drop WAV File Here<br>or Click to Select
+    Drag & Drop WAV File Here
 </div>
-<input type="file" id="file-input" accept=".wav" style="display:none;">
 <pre id="output">Output will appear here...</pre>
 
 <script>
 let pyodideReadyPromise = loadPyodide({indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.3/full/"});
 
 const dropArea = document.getElementById('drop-area');
-const fileInput = document.getElementById('file-input');
 const output = document.getElementById('output');
-
-dropArea.addEventListener('click', () => fileInput.click());
-
-fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
 
 dropArea.addEventListener('dragover', e => {
     e.preventDefault();
@@ -98,7 +83,6 @@ async function handleFile(file) {
     const arrayBuffer = await file.arrayBuffer();
     const wavBytes = new Uint8Array(arrayBuffer);
 
-    // Python code: audio conversion script
     const pyCode = `
 import struct
 import numpy as np
